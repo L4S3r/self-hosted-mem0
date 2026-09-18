@@ -1,0 +1,21 @@
+# The official nginx image runs envsubst on every *.template file in
+# /etc/nginx/templates/ at container start, writing the result into
+# /etc/nginx/conf.d/ — so ${MEM0_MCP_TOKEN} below becomes a literal
+# value before nginx ever parses this file.
+
+server {
+    listen 8080;
+
+    location / {
+        if ($http_authorization != "Bearer ${MEM0_MCP_TOKEN}") {
+            return 401;
+        }
+
+        proxy_pass http://mem0-mcp:8765;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_buffering off;        # needed if the MCP transport streams
+        proxy_read_timeout 3600;    # keep long-lived connections alive
+    }
+}

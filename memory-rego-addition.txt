@@ -1,0 +1,39 @@
+Add this block to policies/authnz.rego, alongside the existing numbered
+rules (matches the file's own input.user.roles / input.action convention
+exactly — no new input shape to design for):
+
+# 7. Personal Memory MCP client (self-hosted mem0 service)
+allow if {
+    "memory_client" in input.user.roles
+    input.action in {
+        "memory:add",
+        "memory:search",
+        "memory:read",
+        "memory:update",
+        "memory:delete"
+    }
+}
+
+Notes:
+- Deliberately a new role ("memory_client") rather than reusing
+  "superadmin" — keeps the memory service's blast radius separate from
+  Falqyn's tenant/business roles, least-privilege style.
+- This makes the *policy* correct and ready to deploy in OPA. It does
+  NOT by itself gate mem0-mcp's traffic — see the honesty note below.
+
+Why this isn't wired into the nginx gate already:
+OPA's HTTP API always answers with HTTP 200 and a JSON body like
+{"result": true} or {"result": false} — it never itself returns 401/403.
+nginx's `auth_request` directive only understands the response *status
+code*, so pointing auth_request straight at OPA won't work — it would
+always "succeed" (200) regardless of what result says.
+
+The bearer-token gate I wired into docker-compose.mem0.yml is a real,
+working default. If you want OPA enforcing this instead, the correct
+shape is a small proxy (10-15 lines of Python/FastAPI) that:
+  1. reads the incoming request,
+  2. POSTs {"input": {"user": {...}, "action": "memory:add"}} to
+     Falqyn's OPA container at /v1/data/authnz/allow,
+  3. forwards to mem0-mcp:8765 only if result.allow is true.
+Say the word and I'll write that proxy — swapping it in for mem0-gate
+is a one-line change in docker-compose.mem0.yml.

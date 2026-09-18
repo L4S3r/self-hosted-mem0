@@ -1,0 +1,64 @@
+# Independent stack — separate from /srv/falqyn_system's compose project.
+# Deploy from its own directory, e.g. /srv/mem0-mcp/, so its lifecycle
+# (restarts, rebuilds, teardown) never touches Falqyn.
+#
+# Usage:
+#   echo "MEM0_MCP_TOKEN=$(openssl rand -hex 32)" > .env
+#   docker compose -f docker-compose.mem0.yml up -d --build
+#   docker exec mem0-ollama ollama pull nomic-embed-text
+#   docker exec mem0-ollama ollama pull qwen2.5:7b
+
+services:
+  mem0-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mem0-qdrant
+    restart: unless-stopped
+    volumes:
+      - mem0_qdrant_data:/qdrant/storage
+    networks:
+      - mem0-net
+
+  mem0-ollama:
+    image: ollama/ollama:latest
+    container_name: mem0-ollama
+    restart: unless-stopped
+    volumes:
+      - mem0_ollama_data:/root/.ollama
+    networks:
+      - mem0-net
+
+  mem0-mcp:
+    build:
+      context: ./mem0-mcp
+    container_name: mem0-mcp
+    restart: unless-stopped
+    depends_on:
+      - mem0-qdrant
+      - mem0-ollama
+    networks:
+      - mem0-net
+    # No published port on purpose — only mem0-gate can reach this,
+    # over the internal mem0-net bridge.
+
+  mem0-gate:
+    image: nginx:1.27-alpine
+    container_name: mem0-gate
+    restart: unless-stopped
+    depends_on:
+      - mem0-mcp
+    environment:
+      MEM0_MCP_TOKEN: ${MEM0_MCP_TOKEN}
+    volumes:
+      - ./nginx/mem0-gate.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "127.0.0.1:8765:8080"   # cloudflared's Public Hostname points here
+    networks:
+      - mem0-net
+
+volumes:
+  mem0_qdrant_data:
+  mem0_ollama_data:
+
+networks:
+  mem0-net:
+    driver: bridge

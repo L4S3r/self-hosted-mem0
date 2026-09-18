@@ -1,0 +1,32 @@
+[Unit]
+Description=Cloudflare Tunnel - mem0 (independent from falqyn-oracle)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+# Paste the token for the NEW tunnel (created separately in the Zero
+# Trust dashboard) below — do NOT reuse falqyn-oracle's token.
+ExecStart=/usr/local/bin/cloudflared tunnel run --token PASTE_MEM0_TUNNEL_TOKEN_HERE
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+
+# --- setup ---
+# 1. Zero Trust dashboard -> Networks -> Tunnels -> Create a tunnel
+#    -> Cloudflared -> name it e.g. "mem0-oracle" -> copy its token.
+# 2. Paste the token above, replacing PASTE_MEM0_TUNNEL_TOKEN_HERE.
+# 3. sudo cp cloudflared-mem0.service /etc/systemd/system/
+#    sudo chmod 600 /etc/systemd/system/cloudflared-mem0.service   # it holds a secret
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now cloudflared-mem0
+# 4. Back in the dashboard, on the "mem0-oracle" tunnel -> Public
+#    Hostname tab -> add mem0-api.l4s3r.site -> Service: http://localhost:8765
+#    (matches the port docker-compose.mem0.yml publishes mem0-gate on).
+# 5. journalctl -u cloudflared-mem0 -f   to confirm it connects, then
+#    curl -H "Authorization: Bearer <MEM0_MCP_TOKEN>" https://mem0-api.l4s3r.site/
+#    to confirm the whole chain (tunnel -> gate -> mem0-mcp) works.
